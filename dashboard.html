@@ -1,0 +1,125 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>User Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+  <style>
+    .chat-box {
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      background-color: #fff;
+    }
+    .message-input {
+      width: calc(100% - 70px);
+      padding: 10px;
+      border-radius: 6px 0 0 6px;
+      border: 1px solid #ccc;
+    }
+    .send-btn {
+      width: 60px;
+      padding: 10px;
+      border: none;
+      background-color: #333;
+      color: white;
+      border-radius: 0 6px 6px 0;
+      cursor: pointer;
+    }
+    .msg {
+      margin: 5px;
+      padding: 8px;
+      border-radius: 8px;
+    }
+    .sent { background-color: #dcf8c6; text-align: right; }
+    .received { background-color: #ebebeb; text-align: left; }
+  </style>
+</head>
+<body>
+<div class="form-container">
+  <h2>Users</h2>
+  <div id="user-list"></div>
+  <h3>Conversation</h3>
+  <div class="chat-box" id="chat-box"></div>
+  <input type="text" id="message-input" class="message-input" placeholder="Type message...">
+  <button class="send-btn" onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "your-api-key",
+    authDomain: "test-76222.firebaseapp.com",
+    projectId: "test-76222",
+    appId: "your-app-id"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  let currentRecipient = null;
+
+  auth.onAuthStateChanged(user => {
+    if (!user) window.location = 'login.html';
+    else fetchUsers(user.uid);
+  });
+
+  function fetchUsers(currentUserId) {
+    db.collection('users').get().then(snapshot => {
+      let usersHTML = '';
+      snapshot.forEach(doc => {
+        if(doc.id !== currentUserId) {
+          usersHTML += `<p><a href="#" onclick="startChat('${doc.id}', '${doc.data().email}')">${doc.data().email}</a></p>`;
+        }
+      });
+      document.getElementById('user-list').innerHTML = usersHTML;
+    });
+  }
+
+  function startChat(uid, email) {
+    currentRecipient = uid;
+    document.getElementById('chat-box').innerHTML = '<p>Loading chat with ' + email + '...</p>';
+    auth.onAuthStateChanged(user => {
+      if (user) loadMessages(user.uid, uid);
+    });
+  }
+
+  function sendMessage() {
+    const text = document.getElementById('message-input').value;
+    if (!text.trim() || !currentRecipient) return;
+    auth.currentUser.getIdToken().then(() => {
+      const msgData = {
+        sender: auth.currentUser.uid,
+        recipient: currentRecipient,
+        text,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      db.collection('messages').add(msgData);
+      document.getElementById('message-input').value = '';
+    });
+  }
+
+  function loadMessages(senderId, recipientId) {
+    db.collection('messages')
+      .where('sender', 'in', [senderId, recipientId])
+      .where('recipient', 'in', [senderId, recipientId])
+      .orderBy('timestamp')
+      .onSnapshot(snapshot => {
+        const chatBox = document.getElementById('chat-box');
+        chatBox.innerHTML = '';
+        snapshot.forEach(doc => {
+          const msg = doc.data();
+          const className = msg.sender === senderId ? 'sent' : 'received';
+          chatBox.innerHTML += `<div class="msg ${className}">${msg.text}</div>`;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        });
+      });
+  }
+</script>
+</body>
+</html>
